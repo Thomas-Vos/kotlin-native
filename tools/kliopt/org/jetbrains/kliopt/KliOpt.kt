@@ -17,49 +17,108 @@
 
 package org.jetbrains.kliopt
 
+import kotlin.reflect.KProperty
+
+@DslMarker
+annotation class ArgParserMarker
+
+@ArgParserMarker
+interface ArgParserElement {
+
+}
+
+/*class Subcommand(commandName: String) : ArgParser(commandName) {
+
+}*/
+
+class ArgParserDSLElement(val programName: String) : ArgParserElement {
+    private val cliInstance = ArgParser(programName)
+
+    var useDefaultHelpShortName: Boolean
+        get() = cliInstance.useDefaultHelpShortName
+        set(value) { cliInstance.useDefaultHelpShortName = value }
+
+    var prefixStyle: ArgParser.OPTION_PREFIX_STYLE
+        get() = cliInstance.prefixStyle
+        set(value) {cliInstance.prefixStyle = value }
+
+    operator fun get(key: String): ArgParser.ArgumentValue<*> = cliInstance[key]
+    /*fun subcommand() : Subcommand {
+
+    }*/
+    fun <T : Any> option(type: ArgType<T>, fullName: String, init: OptionDescriptor<T>.() -> Unit = {}): OptionDescriptor<T> {
+        val descriptor = OptionDescriptor(type, fullName)
+        descriptor.init()
+        cliInstance.addOption(descriptor)
+        return descriptor
+    }
+    fun  <T : Any> argument(type: ArgType<T>, fullName: String, init: ArgDescriptor<T>.() -> Unit = {}) : ArgDescriptor<T> {
+        val descriptor = ArgDescriptor(type, fullName)
+        descriptor.init()
+        cliInstance.addArgument(descriptor)
+        return descriptor
+    }
+}
+
+fun argParser(programName: String, init: ArgParserDSLElement.() -> Unit): ArgParserDSLElement {
+    val parser = ArgParserDSLElement(programName)
+    parser.init()
+    return parser
+}
+
 // Possible types of arguments.
-sealed class ArgType(val hasParameter: kotlin.Boolean) {
+sealed class ArgType<T : Any>(val hasParameter: kotlin.Boolean) {
     abstract val description: kotlin.String
-    open fun check(value: kotlin.String, name: kotlin.String) {}
-    class Boolean : ArgType(false) {
+    abstract val convertion: (value: kotlin.String, name: kotlin.String)->T
+
+    class Boolean : ArgType<kotlin.Boolean>(false) {
         override val description: kotlin.String
             get() = ""
+
+        override val convertion: (value: kotlin.String, name: kotlin.String) -> kotlin.Boolean
+            get() = { _, _ -> true }
     }
-    class String : ArgType(true) {
+
+    class String : ArgType<kotlin.String>(true) {
         override val description: kotlin.String
             get() = "{ String }"
+
+        override val convertion: (value: kotlin.String, name: kotlin.String) -> kotlin.String
+            get() = { value, _ -> value }
     }
-    class Int : ArgType(true) {
+
+    class Int : ArgType<kotlin.Int>(true) {
         override val description: kotlin.String
             get() = "{ Int }"
 
-        override fun check(value: kotlin.String, name: kotlin.String) {
-            value.toIntOrNull() ?: error("Option $name is expected to be integer number. $value is provided.")
-        }
+        override val convertion: (value: kotlin.String, name: kotlin.String) -> kotlin.Int
+            get() = { value, name -> value.toIntOrNull()
+                    ?: error("Option $name is expected to be integer number. $value is provided.") }
     }
-    class Double : ArgType(true) {
+
+    class Double : ArgType<kotlin.Double>(true) {
         override val description: kotlin.String
             get() = "{ Double }"
 
-        override fun check(value: kotlin.String, name: kotlin.String) {
-            value.toDoubleOrNull() ?: error("Option $name is expected to be double number. $value is provided.")
-        }
+        override val convertion: (value: kotlin.String, name: kotlin.String) -> kotlin.Double
+            get() = { value, name -> value.toDoubleOrNull()
+                    ?: error("Option $name is expected to be double number. $value is provided.") }
     }
-    class Choice(val values: List<kotlin.String>) : ArgType(true) {
+
+    class Choice(val values: List<kotlin.String>) : ArgType<kotlin.String>(true) {
         override val description: kotlin.String
             get() = "{ Value should be one of $values }"
 
-        override fun check(value: kotlin.String, name: kotlin.String) {
-            if (value !in values) error("Option $name is expected to be one of $values. $value is provided.")
-        }
+        override val convertion: (value: kotlin.String, name: kotlin.String) -> kotlin.String
+            get() = { value, name -> if (value in values) value else error("Option $name is expected to be one of $values. $value is provided.") }
     }
 }
 
 data class Action(val callback: (parser: ArgParser) -> Unit, val parser: ArgParser)
 
 // Common descriptor both for options and positional arguments.
-abstract class Descriptor(val type: ArgType,
-                          val longName: String,
+abstract class Descriptor<T : Any>(val type: ArgType<T>,
+                          val fullName: String,
                           val description: String? = null,
                           val defaultValue: String? = null,
                           val isRequired: Boolean = false,
@@ -68,23 +127,23 @@ abstract class Descriptor(val type: ArgType,
     abstract val helpMessage: String
 }
 
-class OptionDescriptor(
-        type: ArgType,
-        longName: String,
+class OptionDescriptor<T: Any>(
+        type: ArgType<T>,
+        fullName: String,
         val shortName: String ? = null,
         description: String? = null,
         defaultValue: String? = null,
         isRequired: Boolean = false,
         val isMultiple: Boolean = false,
         val delimiter: String? = null,
-        deprecatedWarning: String? = null) : Descriptor (type, longName, description, defaultValue, isRequired, deprecatedWarning) {
+        deprecatedWarning: String? = null) : Descriptor<T> (type, fullName, description, defaultValue, isRequired, deprecatedWarning) {
     override val textDescription: String
-        get() = "option -$longName"
+        get() = "option --$fullName"
 
     override val helpMessage: String
         get() {
             val result = StringBuilder()
-            result.append("    -${longName}")
+            result.append("    --${fullName}")
             shortName?.let { result.append(", -$it") }
             defaultValue?.let { result.append(" [$it]") }
             description?.let {result.append(" -> ${it}")}
@@ -96,20 +155,20 @@ class OptionDescriptor(
         }
 }
 
-class ArgDescriptor(
-        type: ArgType,
-        longName: String,
+class ArgDescriptor<T : Any>(
+        type: ArgType<T>,
+        fullName: String,
         description: String? = null,
         defaultValue: String? = null,
         isRequired: Boolean = true,
-        deprecatedWarning: String? = null) : Descriptor (type, longName, description, defaultValue, isRequired, deprecatedWarning) {
+        deprecatedWarning: String? = null) : Descriptor<T> (type, fullName, description, defaultValue, isRequired, deprecatedWarning) {
     override val textDescription: String
-        get() = "argument $longName"
+        get() = "argument $fullName"
 
     override val helpMessage: String
         get() {
             val result = StringBuilder()
-            result.append("    ${longName}")
+            result.append("    ${fullName}")
             defaultValue?.let { result.append(" [$it]") }
             description?.let {result.append(" -> ${it}")}
             if (!isRequired) result.append(" (optional)")
@@ -121,49 +180,119 @@ class ArgDescriptor(
 }
 
 // Arguments parser.
-class ArgParser(optionsList: List<OptionDescriptor>, argsList: List<ArgDescriptor> = listOf<ArgDescriptor>(),
-                val actions: Map<String, Action> = emptyMap(), useDefaultHelpShortName: Boolean = true) {
-    private val options = optionsList.union(if (useDefaultHelpShortName)
-        listOf(OptionDescriptor(ArgType.Boolean(), "help", "h", "Usage info"))
-            else
-        listOf(OptionDescriptor(ArgType.Boolean(), "help", description = "Usage info"))
-    ).toList()
-    private val arguments = argsList
-    private lateinit var parsedValues: MutableMap<String, ParsedArg?>
-    private lateinit var valuesOrigin: MutableMap<String, ValueOrigin?>
+class ArgParser(val programName: String, var useDefaultHelpShortName: Boolean = true,
+                var prefixStyle: OPTION_PREFIX_STYLE = OPTION_PREFIX_STYLE.LINUX) {
+
+    // Map of options: key - fullname of option, value - pair of descriptor and parsed values.
+    protected val options = mutableMapOf<String, ParsingValue<*, *>>()
+    // Map of argumnets: key - fullname of argument, value - pair of descriptor and parsed values.
+    protected val arguments = mutableMapOf<String, ParsingValue<*, *>>()
+
+    //private lateinit var parsedValues: MutableMap<String, ParsingElement>
+    //private lateinit var valuesOrigin: MutableMap<String, ValueOrigin?>
+    //private lateinit var optDescriptors: Map<String, OptionDescriptor>
+    private lateinit var shortNames: Map<String, ParsingValue<*, *>>
+
+    // Use Linux-style of options description.
+    protected val optionFullFormPrefix = if (prefixStyle == OPTION_PREFIX_STYLE.LINUX) "--" else "-"
+    protected val optionShortFromPrefix = "-"
 
     enum class ValueOrigin { SET_BY_USER, SET_DEFAULT_VALUE, UNSET }
+    enum class OPTION_PREFIX_STYLE { LINUX, JVM }
 
-    inner class ParsedArg(val descriptor: Descriptor, val values: List<String>) {
-        init {
-            // Check correctness of initialization data.
-            if (values.isEmpty()) {
-                printError("Parsed value should be provided!")
+    operator fun get(key: String): ArgumentValue<*> =
+        options[key]?.argumentValue ?: arguments[key]?.argumentValue ?: printError("There is no option or argument with name $key")
+
+    fun <T : Any>option(type: ArgType<T>,
+               fullName: String,
+               shortName: String ? = null,
+               description: String? = null,
+               defaultValue: String? = null,
+               isRequired: Boolean = false,
+               isMultiple: Boolean = false,
+               delimiter: String? = null,
+               deprecatedWarning: String? = null): ArgumentValue<*> {
+        val descriptor = OptionDescriptor(type, fullName, shortName, description, defaultValue,
+                isRequired, isMultiple, delimiter, deprecatedWarning)
+        val cliElement = if (isMultiple || delimiter != null) ArgumentMultipleValues(type.convertion)
+            else ArgumentSingleValue(type.convertion)
+        options[fullName] = ParsingValue(descriptor, cliElement)
+        return cliElement
+    }
+
+    fun <T : Any>argument(type: ArgType<T>,
+                 fullName: String,
+                 description: String? = null,
+                 defaultValue: String? = null,
+                 isRequired: Boolean = true,
+                 deprecatedWarning: String? = null): ArgumentValue<T> {
+        val descriptor = ArgDescriptor(type, fullName, description, defaultValue, isRequired, deprecatedWarning)
+        val cliElement = ArgumentSingleValue(type.convertion)
+        arguments[fullName] = ParsingValue(descriptor, cliElement)
+        return cliElement
+    }
+
+    internal fun <T : Any>addOption(descriptor: OptionDescriptor<T>) {
+        val cliElement = if (descriptor.isMultiple || descriptor.delimiter != null) ArgumentMultipleValues(descriptor.type.convertion)
+        else ArgumentSingleValue(descriptor.type.convertion)
+        options[descriptor.fullName] = ParsingValue(descriptor, cliElement)
+    }
+
+    internal fun <T : Any>addArgument(descriptor: ArgDescriptor<T>) {
+        val cliElement = ParsingValue(descriptor,ArgumentSingleValue(descriptor.type.convertion))
+        arguments[descriptor.fullName] = cliElement
+    }
+
+    class ParsingValue<T: Any, U: Any>(val descriptor: Descriptor<T>, val argumentValue: ArgumentValue<U>) {
+        fun addValue(stringValue: String) {
+            if (descriptor is OptionDescriptor<*> && !descriptor.isMultiple &&
+                    !argumentValue.isEmpty() && descriptor.delimiter != null) {
+                error("Try to provide more than one value for ${descriptor.fullName}.")
+            }
+            if (descriptor is OptionDescriptor<*> && descriptor.delimiter != null) {
+                stringValue.split(descriptor.delimiter).forEach {
+                    argumentValue.addValue(it, descriptor.fullName)
+                }
+            } else {
+                argumentValue.addValue(stringValue, descriptor.fullName)
             }
         }
+    }
 
-        // Get value of argument converted to expected type.
-        private fun <T : Any> getTyped(value: String): T {
-            val typedValue = when (descriptor.type) {
-                is ArgType.Int -> value.toInt()
-                is ArgType.Double -> value.toDouble()
-                is ArgType.Boolean -> value == "true"
-                else -> value
-            } as? T
-            typedValue ?: printError("Argument ${descriptor.longName} has type ${descriptor.type} which differs from expected!")
-            return typedValue
+    abstract class ArgumentValue<T : Any>(val conversion: (value: String, name: String)->T) {
+        protected lateinit var values: T
+
+        abstract fun addValue(stringValue: String, argumentName: String)
+
+        abstract fun isEmpty(): Boolean
+        protected fun valuesAreInitialized() = ::values.isInitialized
+        operator fun getValue(thisRef: Any?, property: KProperty<*>): T? = if (!isEmpty()) values else null
+        operator fun setValue(thisRef: Any?, property: KProperty<*>, value: T) {
+            values = value
+        }
+    }
+
+    class ArgumentSingleValue<T : Any>(conversion: (value: String, name: String)->T): ArgumentValue<T>(conversion) {
+        override fun addValue(stringValue: String, argumentName: String) {
+            if (!valuesAreInitialized()) {
+                values = conversion(stringValue, argumentName)
+            }
+            error("Try to provide more than one value $values and $stringValue for $argumentName.")
         }
 
-        // Get value of argument.
-        fun <T : Any> get(): T {
-            return getTyped<T>(values[0])
+        override fun isEmpty(): Boolean = !valuesAreInitialized()
+    }
+
+    class ArgumentMultipleValues<T : Any>(conversion: (value: String, name: String)->T):
+            ArgumentValue<MutableList<T>>({ value, name -> mutableListOf(conversion(value, name)) }) {
+        init {
+            values = mutableListOf()
+        }
+        override fun addValue(stringValue: String, argumentName: String) {
+            values.addAll(conversion(stringValue, argumentName))
         }
 
-        // Get all values of argument.
-        // For options that can be set multiple types.
-        fun <T : Any> getAll(): List<T> {
-            return values.map { getTyped<T>(it) }
-        }
+        override fun isEmpty() = values.isEmpty()
     }
 
     // Output error. Also adds help usage information for easy understanding of problem.
@@ -172,50 +301,61 @@ class ArgParser(optionsList: List<OptionDescriptor>, argsList: List<ArgDescripto
     }
 
     // Get origin of option value.
-    fun getOrigin(name: String) = valuesOrigin[name] ?: printError("No option/argument $name in list of avaliable options")
+    //fun getOrigin(name: String) = valuesOrigin[name] ?: printError("No option/argument $name in list of avaliable options")
 
-    private fun saveAsArg(argDescriptors: Map<String, ArgDescriptor>, arg: String, processedValues: Map<String, MutableList<String>>): Boolean {
+    private fun saveAsArg(arg: String): Boolean {
         // Find uninitialized arguments.
-        val nullArgs = argDescriptors.keys.filter { processedValues.getValue(it).isEmpty() }
+        val nullArgs = arguments.keys.filter { arguments[it]!!.argumentValue.isEmpty() }
         val name = nullArgs.firstOrNull()
         name?. let {
-            argDescriptors.getValue(name).type.check(arg, name)
-            argDescriptors.getValue(name).deprecatedWarning?.let { println ("Warning: $it") }
-            processedValues.getValue(name).add(arg)
+            val argumentValue = arguments[name]!!
+            argumentValue.descriptor.deprecatedWarning?.let { println ("Warning: $it") }
+            argumentValue.addValue(arg)
             return true
         }
         return false
     }
 
-    private fun saveAsOption(descriptor: OptionDescriptor, value: String, processedValues: Map<String, MutableList<String>>) {
-        if (!descriptor.isMultiple && !processedValues.getValue(descriptor.longName).isEmpty()) {
-            printError("Option ${descriptor.longName} is used more than one time!")
+    private fun <T : Any, U: Any>saveAsOption(parsingValue: ParsingValue<T, U>, value: String) {
+        // Show deprecated warning only first time of using option.
+        parsingValue.descriptor.deprecatedWarning?.let {
+            if (parsingValue.argumentValue.isEmpty())
+                println ("Warning: $it")
         }
-        descriptor.deprecatedWarning?.let { if (processedValues.getValue(descriptor.longName).isEmpty()) println ("Warning: $it") }
-        val savedValues = descriptor.delimiter?.let { value.split(it) } ?: listOf(value)
-
-        savedValues.forEach {
-            descriptor.type.check(it, descriptor.longName)
-            processedValues.getValue(descriptor.longName).add(it)
-        }
-
+        parsingValue.addValue(value)
     }
+
+    // Try to recognize command line element as full form as known option.
+    protected fun recognizeOptionFullForm(candidate: String) =
+        if (candidate.startsWith(optionFullFormPrefix))
+            options[candidate.substring(optionFullFormPrefix.length)]
+        else null
+
+    // Try to recognize command line element as short form as known option.
+    protected fun recognizeOptionShortForm(candidate: String) =
+            if (candidate.startsWith(optionFullFormPrefix))
+                shortNames[candidate.substring(optionShortFromPrefix.length)]
+            else null
 
     // Parse arguments.
     // Returns true if all arguments were parsed, otherwise return false and print help message.
     fun parse(args: Array<String>): Boolean {
+        val helpDescriptor = if (useDefaultHelpShortName) OptionDescriptor(ArgType.Boolean(), "help", "h", "Usage info")
+            else OptionDescriptor(ArgType.Boolean(), "help", description = "Usage info")
+        options["help"] = ParsingValue(helpDescriptor, ArgumentSingleValue(helpDescriptor.type.convertion))
+
         var index = 0
-        val optDescriptors = options.map { it.longName to it }.toMap()
-        val shortNames = options.filter { it.shortName != null }.map { it.shortName!! to it.longName }.toMap()
-        val argDescriptors = arguments.map { it.longName to it }.toMap()
-        val descriptorsKeys = optDescriptors.keys.union(argDescriptors.keys).toList()
-        val processedValues = descriptorsKeys.map { it to mutableListOf<String>() }.toMap().toMutableMap()
-        parsedValues = descriptorsKeys.map { it to null }.toMap().toMutableMap()
-        valuesOrigin = descriptorsKeys.map { it to ValueOrigin.UNSET }.toMap().toMutableMap()
+        shortNames = options.filter { (it.value.descriptor as? OptionDescriptor<*>)?.shortName != null }.
+                map { (it.value.descriptor as OptionDescriptor<*>).shortName!! to it.value }.toMap()
+        //val argDescriptors = arguments.map { it.fullName to it }.toMap()
+        //val descriptorsKeys = optDescriptors.keys.union(argDescriptors.keys).toList()
+        //val processedValues = descriptorsKeys.map { it to mutableListOf<String>() }.toMap().toMutableMap()
+        //parsedValues = descriptorsKeys.map { it to null }.toMap().toMutableMap()
+        //valuesOrigin = descriptorsKeys.map { it to ValueOrigin.UNSET }.toMap().toMutableMap()
         while (index < args.size) {
             val arg = args[index]
             // Check for actions.
-            actions.forEach { (name, action) ->
+            /*actions.forEach { (name, action) ->
                 if (arg == name) {
                     // Use parser for this action.
                     val parseResult = action.parser.parse(args.slice(index + 1..args.size - 1).toTypedArray())
@@ -223,97 +363,75 @@ class ArgParser(optionsList: List<OptionDescriptor>, argsList: List<ArgDescripto
                         action.callback(action.parser)
                     return false
                 }
-            }
+            }*/
             if (arg.startsWith('-')) {
+                // Candidate in being option.
                 // Option is found.
-                val name = shortNames[arg.substring(1)] ?: arg.substring(1)
-                val descriptor = optDescriptors[name]
-                descriptor?. let {
-                    if (descriptor.type.hasParameter) {
+                val argValue = recognizeOptionShortForm(arg) ?: recognizeOptionFullForm(arg)
+                argValue?.descriptor?. let {
+                    if (argValue.descriptor.type.hasParameter) {
                         if (index < args.size - 1) {
-                            saveAsOption(descriptor, args[index + 1], processedValues)
+                            saveAsOption(argValue, args[index + 1])
                             index++
                         } else {
                             // An error, option with value without value.
-                            printError("No value for ${descriptor.textDescription}")
+                            printError("No value for ${argValue.descriptor.textDescription}")
                         }
                     } else {
-                        if (name == "help") {
+                        // Boolean flags.
+                        if (argValue.descriptor.fullName == "help") {
                             println(makeUsage())
                             return false
                         }
-                        saveAsOption (descriptor, "true", processedValues)
+                        saveAsOption(argValue, "true")
                     }
                 } ?: run {
                     // Try save as argument.
-                    if (!saveAsArg(argDescriptors, arg, processedValues)) {
+                    if (!saveAsArg(arg)) {
                         printError("Unknown option $arg")
                     }
                 }
             } else {
                 // Argument is found.
-                if (!saveAsArg(argDescriptors, arg, processedValues)) {
+                if (!saveAsArg(arg)) {
                     printError("Too many arguments! Couldn't proccess argument $arg!")
                 }
             }
             index++
         }
 
-        processedValues.forEach { (key, value) ->
-            val descriptor = optDescriptors[key] ?: argDescriptors.getValue(key)
+        // Postprocess results of parsing.
+        options.values.union(arguments.values).forEach { value ->
+            val descriptor = value.descriptor
             // Not inited, append default value if needed.
-            if (value.isEmpty()) {
+            if (value.argumentValue.isEmpty()) {
                 descriptor.defaultValue?. let {
-                    parsedValues[key] = ParsedArg(descriptor, listOf(descriptor.defaultValue))
-                    valuesOrigin[key] = ValueOrigin.SET_DEFAULT_VALUE
+                    value.addValue(descriptor.defaultValue)
+                    //valuesOrigin[key] = ValueOrigin.SET_DEFAULT_VALUE
                 } ?: run {
                     if (descriptor.isRequired) {
                         printError("Please, provide value for ${descriptor.textDescription}. It should be always set")
-                    } else {
-                        parsedValues[key] = null
                     }
                 }
             } else {
-                parsedValues[key] = ParsedArg(descriptor, value)
-                valuesOrigin[key] = ValueOrigin.SET_BY_USER
+                //valuesOrigin[key] = ValueOrigin.SET_BY_USER
             }
         }
         return true
     }
 
-    // Get value of argument.
-    fun <T : Any> get(name: String): T? {
-        if (::parsedValues.isInitialized) {
-            val arg = parsedValues[name]
-            return arg?.get()
-        } else {
-            printError("Method parse() of ArgParser class should be called before getting arguments and options.")
-        }
-    }
-
-    // Get all values of argument.
-    // For options that can be set multiple types.
-    fun <T : Any> getAll(name: String): List<T>? {
-        if (::parsedValues.isInitialized) {
-            val arg = parsedValues[name]
-            return arg?.getAll()
-        } else {
-            printError("Method parse() of ArgParser class should be called before getting arguments and options.")
-        }
-    }
-
     private fun makeUsage(): String {
         val result = StringBuilder()
-        result.append("Usage: \n")
+        result.append("Usage: $programName options_list\n")
         if (!arguments.isEmpty()) {
             result.append("Arguments: \n")
             arguments.forEach {
-                result.append(it.helpMessage)
+                result.append(it.value.descriptor.helpMessage)
             }
         }
         result.append("Options: \n")
         options.forEach {
-            result.append(it.helpMessage)
+            result.append(it.value.descriptor.helpMessage)
         }
         return result.toString()
     }
