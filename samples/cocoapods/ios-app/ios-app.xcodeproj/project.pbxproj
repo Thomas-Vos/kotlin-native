@@ -13,6 +13,7 @@
 		2C11BAD6224B4DCD00D1CC3C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2C11BAD5224B4DCD00D1CC3C /* Assets.xcassets */; };
 		2C11BAD9224B4DCD00D1CC3C /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 2C11BAD7224B4DCD00D1CC3C /* LaunchScreen.storyboard */; };
 		7AEB35573DF5ECC0B96C877C /* Pods_ios_app.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 06FDB564DA981DADB5693C07 /* Pods_ios_app.framework */; };
+		E9627FCA22AEBACF006BA7BB /* SwiftUIView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9627FC922AEBACF006BA7BB /* SwiftUIView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,6 +28,7 @@
 		2C11BAE0224B65DE00D1CC3C /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		44888DA7148EA4EB17DF765D /* Pods-ios-app.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ios-app.debug.xcconfig"; path = "Target Support Files/Pods-ios-app/Pods-ios-app.debug.xcconfig"; sourceTree = "<group>"; };
 		A063F818143EBBCD07EA19D4 /* Pods-ios-app.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ios-app.release.xcconfig"; path = "Target Support Files/Pods-ios-app/Pods-ios-app.release.xcconfig"; sourceTree = "<group>"; };
+		E9627FC922AEBACF006BA7BB /* SwiftUIView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftUIView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,6 +70,7 @@
 				2C11BAD5224B4DCD00D1CC3C /* Assets.xcassets */,
 				2C11BAD7224B4DCD00D1CC3C /* LaunchScreen.storyboard */,
 				2C11BADA224B4DCD00D1CC3C /* Info.plist */,
+				E9627FC922AEBACF006BA7BB /* SwiftUIView.swift */,
 			);
 			path = "ios-app";
 			sourceTree = "<group>";
@@ -207,6 +210,7 @@
 			files = (
 				2C11BAD1224B4DCB00D1CC3C /* ViewController.swift in Sources */,
 				2C11BACF224B4DCB00D1CC3C /* AppDelegate.swift in Sources */,
+				E9627FCA22AEBACF006BA7BB /* SwiftUIView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
